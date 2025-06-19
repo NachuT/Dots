@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import Navbar from "@/components/Navbar";
 import AuthProvider from "@/components/AuthProvider";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -25,7 +24,6 @@ export default async function RootLayout({
       <body className={`${inter.className} bg-background text-foreground`}>
         <AuthProvider session={session}>
           <div className="min-h-screen">
-            <Navbar />
             <main className="container mx-auto px-4 py-8">{children}</main>
           </div>
           <Toaster />

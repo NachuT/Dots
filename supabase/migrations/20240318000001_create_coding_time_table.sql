@@ -3,6 +3,7 @@ CREATE TABLE coding_time (
   id BIGSERIAL PRIMARY KEY,
   user_id UUID NOT NULL UNIQUE,
   total_seconds INTEGER NOT NULL DEFAULT 0,
+  starting_total_seconds INTEGER,
   last_updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

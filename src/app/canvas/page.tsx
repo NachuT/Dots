@@ -11,9 +11,11 @@ const supabaseRealtime = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const GRID_SIZE = 50;
-const SIDEBAR_WIDTH = 256;
-const NAVBAR_HEIGHT = 64;
+const GRID_SIZE = 100;
+const SECONDS_PER_PIXEL = 300; // 5 minutes
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 3;
+const INITIAL_ZOOM = 2.5; // Start zoomed in
 
 export default function Canvas() {
   const { data: session, status } = useSession();
@@ -22,8 +24,15 @@ export default function Canvas() {
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [availableTime, setAvailableTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [pixelSize, setPixelSize] = useState(12);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [pixelSize, setPixelSize] = useState(8);
+  const [zoom, setZoom] = useState(INITIAL_ZOOM);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mouseStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const rafRef = useRef<number | null>(null);
+  const didDrag = useRef(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -33,15 +42,19 @@ export default function Canvas() {
 
   useEffect(() => {
     function handleResize() {
-      if (!gridContainerRef.current) return;
-      const { width, height } = gridContainerRef.current.getBoundingClientRect();
-      const size = Math.floor(Math.min(width, height) / GRID_SIZE);
-      setPixelSize(size > 2 ? size : 2);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const size = Math.floor(Math.min(w, h) / (GRID_SIZE / zoom));
+      setPixelSize(size);
+      setOffset({
+        x: Math.floor((w - size * GRID_SIZE) / 2),
+        y: Math.floor((h - size * GRID_SIZE) / 2),
+      });
     }
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [zoom]);
 
   const fetchCodingTime = async () => {
     if (!session?.user?.id) return;
@@ -109,12 +122,40 @@ export default function Canvas() {
     }
   }, [session]);
 
+  // Mouse drag panning
+  function onMouseDown(e: React.MouseEvent) {
+    setIsPanning(true);
+    panStart.current = { ...pan };
+    mouseStart.current = { x: e.clientX, y: e.clientY };
+    didDrag.current = false;
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!isPanning) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const dx = e.clientX - mouseStart.current.x;
+      const dy = e.clientY - mouseStart.current.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        didDrag.current = true;
+      }
+      setPan({ x: panStart.current.x + dx, y: panStart.current.y + dy });
+    });
+  }
+  function onMouseUp() {
+    setIsPanning(false);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }
+
+  // Zoom controls
+  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.2, MAX_ZOOM));
+  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.2, MIN_ZOOM));
+
   const handlePixelClick = async (x: number, y: number) => {
-    if (!session?.user?.id || availableTime < 600) return;
+    if (!session?.user?.id || availableTime < SECONDS_PER_PIXEL) return;
     const key = `${x},${y}`;
     const prevColor = pixels[key] || "#ffffff";
     setPixels((prev) => ({ ...prev, [key]: selectedColor }));
-    setAvailableTime((prev) => prev - 600);
+    setAvailableTime((prev) => prev - SECONDS_PER_PIXEL);
     try {
       const response = await fetch('/api/pixels', {
         method: 'POST',
@@ -126,129 +167,162 @@ export default function Canvas() {
           y,
           color: selectedColor,
           user_id: session.user.id,
-          time_deducted_seconds: 600,
+          time_deducted_seconds: SECONDS_PER_PIXEL,
         }),
       });
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 409) {
           setPixels((prev) => ({ ...prev, [key]: prevColor }));
-          setAvailableTime((prev) => prev + 600);
+          setAvailableTime((prev) => prev + SECONDS_PER_PIXEL);
           toast.error("Sorry too late!", { duration: 4000 });
         } else {
           setPixels((prev) => ({ ...prev, [key]: prevColor }));
-          setAvailableTime((prev) => prev + 600);
+          setAvailableTime((prev) => prev + SECONDS_PER_PIXEL);
           throw new Error(data.error || data.details || "Failed to place pixel");
         }
         return;
       }
-      await fetchPixels();
     } catch (error) {
       setPixels((prev) => ({ ...prev, [key]: prevColor }));
-      setAvailableTime((prev) => prev + 600);
+      setAvailableTime((prev) => prev + SECONDS_PER_PIXEL);
       toast.error(error instanceof Error ? error.message : "Failed to place pixel", { duration: 4000 });
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  };
-
   return (
-    <div className="flex" style={{ height: `calc(100vh - ${NAVBAR_HEIGHT}px)` }}>
-      <div
-        ref={gridContainerRef}
-        className="flex-1 flex items-center justify-center bg-gray-100"
-        style={{ minWidth: 0, minHeight: 0 }}
-      >
-        <div
-          className="border border-gray-300"
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${GRID_SIZE}, ${pixelSize}px)` ,
-            gridTemplateRows: `repeat(${GRID_SIZE}, ${pixelSize}px)` ,
-            width: pixelSize * GRID_SIZE + (GRID_SIZE - 1),
-            height: pixelSize * GRID_SIZE + (GRID_SIZE - 1),
-            backgroundColor: "#e5e7eb",
-            gap: "1px",
-          }}
-        >
-          {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
-            const x = index % GRID_SIZE;
-            const y = Math.floor(index / GRID_SIZE);
-            const key = `${x},${y}`;
-            const color = pixels[key] || "#ffffff";
-            return (
-              <div
-                key={key}
-                onClick={() => handlePixelClick(x, y)}
-                style={{
-                  width: pixelSize,
-                  height: pixelSize,
-                  backgroundColor: color,
-                  cursor: availableTime >= 600 ? "pointer" : "not-allowed",
-                  userSelect: "none",
-                }}
-                className={`transition-opacity ${
-                  availableTime >= 600 ? "hover:opacity-80" : "opacity-50"
-                }`}
-              />
-            );
-          })}
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+        margin: 0,
+        padding: 0,
+        background: "#fff",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        zIndex: 0,
+        fontFamily: 'Inter, sans-serif',
+        userSelect: isPanning ? "none" : undefined,
+        cursor: isPanning ? "grabbing" : "default",
+      }}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+    >
+      {/* Top center: DOTS */}
+      <div style={{
+        position: "fixed",
+        top: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 10,
+        fontSize: 40,
+        fontWeight: 700,
+        letterSpacing: 2,
+        textShadow: "0 2px 8px #fff8",
+        background: "linear-gradient(90deg, #6366f1, #ec4899, #f59e42, #10b981, #6366f1)",
+        backgroundClip: "text",
+        WebkitBackgroundClip: "text",
+        color: "transparent",
+        WebkitTextFillColor: "transparent",
+        padding: "0 16px"
+      }}>
+        DOTS
+      </div>
+      
+      <div style={{ position: "fixed", top: 32, right: 48, zIndex: 10, textAlign: "right", display: "flex", alignItems: "center", gap: 16, background: "rgba(255,255,255,0.85)", borderRadius: 16, boxShadow: "0 2px 12px #0001", padding: "12px 20px" }}>
+        <div style={{ fontSize: 20, color: "#444", fontWeight: 500, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session?.user?.name || "Profile"}</div>
+        <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          {session?.user?.image ? (
+            <img src={session.user.image} alt="profile" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }} />
+          ) : (
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#222" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="7" r="5"/><path d="M17 21v-2a5 5 0 0 0-10 0v2"/></svg>
+          )}
+        </div>
+        {/* Pixel allowance info */}
+        <div style={{ marginLeft: 16, textAlign: "left" }}>
+          <div style={{ fontSize: 16, color: "#6366f1", fontWeight: 600 }}>
+            Pixels you can place: {Math.max(0, Math.floor(availableTime / SECONDS_PER_PIXEL))}
+          </div>
+          <div style={{ fontSize: 14, color: "#444" }}>
+            Time available: {Math.max(0, Math.floor(availableTime / 60))} min {Math.max(0, availableTime % 60)} sec
+          </div>
         </div>
       </div>
-      <div
-        className="bg-white border-l border-gray-200 p-6 flex flex-col"
-        style={{ width: SIDEBAR_WIDTH }}
-      >
-        <h1 className="text-2xl font-bold mb-6">Pixel Canvas</h1>
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Color
-            </label>
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-full h-12 rounded cursor-pointer border border-gray-300"
-            />
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-2">Coding Time</h2>
-            {isLoading ? (
-              <p className="text-gray-500">Loading...</p>
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-gray-900 mb-2">
-                  {formatTime(availableTime)}
-                </p>
-                <p className="text-sm text-gray-600">
-                  {availableTime >= 600
-                    ? "Click on a pixel to place your color (costs 10 minutes)"
-                    : "Not enough coding time to place a pixel"}
-                </p>
-              </>
-            )}
-          </div>
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-2">How to Play</h2>
-            <ul className="text-sm text-gray-600 space-y-2">
-              <li>• Select a color from the picker</li>
-              <li>• Click on any white pixel to place your color</li>
-              <li>• Each pixel costs 10 minutes of coding time</li>
-              <li>• You can't place pixels on already colored spots</li>
-            </ul>
-          </div>
-          <button
-            onClick={() => signOut()}
-            className="mt-8 px-4 py-2 bg-red-500 text-white rounded shadow hover:bg-red-600"
-          >
-            Logout
-          </button>
+      
+      <div style={{ position: "fixed", top: 32, left: 48, zIndex: 10, display: "flex", flexDirection: "column", gap: 12 }}>
+        <button onClick={handleZoomIn} style={{ fontSize: 24, width: 48, height: 48, borderRadius: 12, background: "#fff", border: "1.5px solid #e0e7ef", boxShadow: "0 2px 8px #0001", cursor: "pointer", fontWeight: 700, marginBottom: 4 }}>+</button>
+        <button onClick={handleZoomOut} style={{ fontSize: 24, width: 48, height: 48, borderRadius: 12, background: "#fff", border: "1.5px solid #e0e7ef", boxShadow: "0 2px 8px #0001", cursor: "pointer", fontWeight: 700 }}>-</button>
+      </div>
+      
+      <div style={{ position: "fixed", bottom: 48, right: 48, zIndex: 10, textAlign: "center" }}>
+        <div style={{ background: "rgba(255,255,255,0.95)", border: "1.5px solid #e0e7ef", borderRadius: 16, boxShadow: "0 2px 12px #0001", padding: 20, marginBottom: 12, minWidth: 120 }}>
+          <div style={{ fontSize: 16, marginBottom: 8, color: "#444", fontWeight: 500 }}>Color Picker</div>
+          <input type="color" value={selectedColor} onChange={e => setSelectedColor(e.target.value)} style={{ width: 48, height: 48, border: "none", background: "none", borderRadius: 8, boxShadow: "0 1px 4px #0001" }} />
         </div>
+        <button onClick={() => signOut()} style={{ fontSize: 16, color: "#fff", background: "#ef4444", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 600, boxShadow: "0 2px 8px #0001", cursor: "pointer", transition: "background 0.2s" }}>Logout</button>
+      </div>
+      {/* Bottom center: BY NACHU */}
+      <div style={{
+        position: "fixed",
+        bottom: 32,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 10,
+        fontSize: 20,
+        fontWeight: 500,
+        letterSpacing: 1,
+        background: "linear-gradient(90deg, #6366f1, #ec4899, #f59e42, #10b981, #6366f1)",
+        backgroundClip: "text",
+        WebkitBackgroundClip: "text",
+        color: "transparent",
+        WebkitTextFillColor: "transparent",
+        borderRadius: 8,
+        padding: "4px 18px",
+        boxShadow: "0 1px 4px #0001"
+      }}>
+        By: Nachu
+      </div>
+      {/* The grid */}
+      <div
+        style={{
+          position: "absolute",
+          left: offset.x + pan.x,
+          top: offset.y + pan.y,
+          display: "grid",
+          gridTemplateColumns: `repeat(${GRID_SIZE}, ${pixelSize}px)` ,
+          gridTemplateRows: `repeat(${GRID_SIZE}, ${pixelSize}px)` ,
+          width: pixelSize * GRID_SIZE + (GRID_SIZE - 1),
+          height: pixelSize * GRID_SIZE + (GRID_SIZE - 1),
+          backgroundColor: "#e5e7eb",
+          gap: "1px",
+          cursor: isPanning ? "grabbing" : "grab",
+          transition: isPanning ? "none" : "transform 0.2s cubic-bezier(.4,2,.6,1)",
+          transform: `translate3d(0,0,0)`
+        }}
+        onMouseDown={onMouseDown}
+      >
+        {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
+          const x = index % GRID_SIZE;
+          const y = Math.floor(index / GRID_SIZE);
+          const key = `${x},${y}`;
+          const color = pixels[key] || "#ffffff";
+          return (
+            <div
+              key={key}
+              onClick={() => { if (!didDrag.current) handlePixelClick(x, y); }}
+              style={{
+                width: pixelSize,
+                height: pixelSize,
+                backgroundColor: color,
+                userSelect: "none",
+                transition: "background 0.15s"
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );

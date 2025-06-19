@@ -64,24 +64,25 @@ export async function GET() {
     // Get total seconds directly from the API response
     const totalSeconds = data.total_seconds || 0;
 
-    // Update the database with the new coding time
-    const { error: dbError } = await supabase
+    // Get or create coding_time row for this user
+    const { data: codingTimeRows, error: fetchCodingTimeError } = await supabase
       .from("coding_time")
-      .upsert({
-        user_id: session.user.id,
-        total_seconds: totalSeconds,
-        last_updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id',
-        ignoreDuplicates: false
-      });
+      .select("total_seconds, starting_total_seconds")
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (dbError) {
-      console.error("Database error:", dbError);
-      return NextResponse.json(
-        { error: "Failed to update coding time in database" },
-        { status: 500 }
-      );
+    let startingTotalSeconds = codingTimeRows?.starting_total_seconds;
+    let availableSeconds = 0;
+    let updateStarting = false;
+
+    if (startingTotalSeconds === null || startingTotalSeconds === undefined) {
+      // First login: set starting_total_seconds and give 60 minutes
+      startingTotalSeconds = totalSeconds;
+      availableSeconds = 3600; // 60 minutes
+      updateStarting = true;
+    } else {
+      // Allow 60 minutes plus any increase in coding time
+      availableSeconds = 3600 + (totalSeconds - startingTotalSeconds);
     }
 
     // Get used time from pixel placements
@@ -95,11 +96,35 @@ export async function GET() {
       0
     ) || 0;
 
+    // Subtract used time
+    availableSeconds = availableSeconds - totalUsedSeconds;
+
+    // Update the database with the new coding time and starting_total_seconds if needed
+    const { error: dbError } = await supabase
+      .from("coding_time")
+      .upsert({
+        user_id: session.user.id,
+        total_seconds: totalSeconds,
+        last_updated_at: new Date().toISOString(),
+        ...(updateStarting ? { starting_total_seconds: startingTotalSeconds } : {})
+      }, {
+        onConflict: 'user_id',
+        ignoreDuplicates: false
+      });
+
+    if (dbError) {
+      console.error("Database error:", dbError);
+      return NextResponse.json(
+        { error: "Failed to update coding time in database" },
+        { status: 500 }
+      );
+    }
+
     // Return the data with available time
     return NextResponse.json({
       human_readable_total: data.human_readable_total,
       total_seconds: totalSeconds,
-      available_seconds: totalSeconds - totalUsedSeconds
+      available_seconds: availableSeconds
     });
   } catch (error) {
     console.error("Unexpected error in coding-time API:", error);

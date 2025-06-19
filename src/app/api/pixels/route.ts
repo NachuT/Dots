@@ -43,39 +43,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if pixel already exists
-    const { data: existingPixel, error: checkError } = await supabase
+    // Upsert pixel: insert or update if exists
+    const { error: upsertError } = await supabase
       .from("pixel_placements")
-      .select("id")
-      .eq("x", x)
-      .eq("y", y)
-      .single();
+      .upsert({
+        x,
+        y,
+        color,
+        user_id,
+        time_deducted_seconds,
+        placed_at: new Date().toISOString(),
+      }, { onConflict: ["x", "y"] });
 
-    if (checkError && checkError.code !== "PGRST116") { // PGRST116 is "no rows returned"
-      console.error("Error checking existing pixel:", checkError);
-      throw checkError;
-    }
-
-    if (existingPixel) {
-      console.error("Pixel already exists at position:", { x, y });
-      return NextResponse.json(
-        { error: "Pixel already exists at this position" },
-        { status: 409 }
-      );
-    }
-
-    // Insert new pixel
-    const { error: insertError } = await supabase.from("pixel_placements").insert({
-      x,
-      y,
-      color,
-      user_id,
-      time_deducted_seconds,
-    });
-
-    if (insertError) {
-      console.error("Error inserting pixel:", insertError);
-      throw insertError;
+    if (upsertError) {
+      console.error("Error upserting pixel:", upsertError);
+      throw upsertError;
     }
 
     return NextResponse.json({ success: true });

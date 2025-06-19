@@ -217,7 +217,7 @@ export default function Canvas() {
             <h2 style={{ fontSize: 24, marginBottom: 16 }}>Welcome to Dots!</h2>
             <div style={{ marginBottom: 24 }}>
               
-              <p>Here you can place pixels on the canvas. Normally you get 1 pixel every 5 minutes on hackatime, but to start you off you will get a free 12 pixels! Have fun and create something cool!</p>
+              <p>Here you can place pixels on the canvas. Use the 2 buttons on the top left to zoom in and out and drag to pan the canvas. Normally you get 1 pixel every 5 minutes on hackatime, but to start you off you will get a free 12 pixels! Have fun and create something cool!</p>
             </div>
             <button
               onClick={handleCloseInstructions}

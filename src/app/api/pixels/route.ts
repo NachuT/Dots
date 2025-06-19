@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         user_id,
         time_deducted_seconds,
         placed_at: new Date().toISOString(),
-      }, { onConflict: ["x", "y"] });
+      }, { onConflict: "x,y" });
 
     if (upsertError) {
       console.error("Error upserting pixel:", upsertError);

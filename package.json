@@ -12,13 +12,14 @@
     "@auth/supabase-adapter": "^1.0.0",
     "@headlessui/react": "^1.7.18",
     "@heroicons/react": "^2.1.1",
+    "@supabase/supabase-js": "^2.39.3",
     "date-fns": "^3.3.1",
     "next": "14.1.0",
     "next-auth": "^4.24.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
-    "@supabase/supabase-js": "^2.39.3"
+    "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -32,6 +33,6 @@
     "typescript": "^5"
   },
   "engines": {
-  "node": "18.x"
+    "node": "18.x"
   }
 }

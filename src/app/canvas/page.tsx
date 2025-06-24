@@ -12,10 +12,10 @@ const supabaseRealtime = createClient(
 );
 
 const GRID_SIZE = 100;
-const SECONDS_PER_PIXEL = 300; // 5 minutes
+const SECONDS_PER_PIXEL = 300;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
-const INITIAL_ZOOM = 2.5; // Start zoomed in
+const INITIAL_ZOOM = 2.5;
 
 export default function Canvas() {
   const { data: session, status } = useSession();
@@ -135,7 +135,6 @@ export default function Canvas() {
     localStorage.setItem("seenInstructions", "true");
   };
 
-  // Mouse drag panning
   function onMouseDown(e: React.MouseEvent) {
     setIsPanning(true);
     panStart.current = { ...pan };
@@ -159,7 +158,7 @@ export default function Canvas() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }
 
-  // Zoom controls
+
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.2, MAX_ZOOM));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.2, MIN_ZOOM));
 
@@ -251,7 +250,6 @@ export default function Canvas() {
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
       >
-        {/* Top center: DOTS */}
         <div style={{
           position: "fixed",
           top: 24,
@@ -281,7 +279,7 @@ export default function Canvas() {
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#222" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="7" r="5"/><path d="M17 21v-2a5 5 0 0 0-10 0v2"/></svg>
             )}
           </div>
-          {/* Pixel allowance info */}
+          
           <div style={{ marginLeft: 16, textAlign: "left" }}>
             <div style={{ fontSize: 16, color: "#6366f1", fontWeight: 600 }}>
               Pixels you can place: {Math.max(0, Math.floor(availableTime / SECONDS_PER_PIXEL))}
@@ -304,7 +302,7 @@ export default function Canvas() {
           </div>
           <button onClick={() => signOut()} style={{ fontSize: 16, color: "#fff", background: "#ef4444", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 600, boxShadow: "0 2px 8px #0001", cursor: "pointer", transition: "background 0.2s" }}>Logout</button>
         </div>
-        {/* Bottom center: BY NACHU */}
+        
         <div style={{
           position: "fixed",
           bottom: 32,
@@ -325,7 +323,6 @@ export default function Canvas() {
         }}>
           By: Nachu
         </div>
-        {/* The grid */}
         <div
           style={{
             position: "absolute",

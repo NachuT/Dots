@@ -5,5 +5,8 @@
   ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/:path*" }
-  ]
-} 
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
+}

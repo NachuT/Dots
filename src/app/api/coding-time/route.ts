@@ -78,16 +78,15 @@ export async function GET() {
     let updateStarting = false;
 
     if (startingTotalSeconds === null || startingTotalSeconds === undefined) {
-      // First login: set starting_total_seconds and give 60 minutes
+      
       startingTotalSeconds = totalSeconds;
-      availableSeconds = 3600; // 60 minutes
+      availableSeconds = 3600; 
       updateStarting = true;
     } else {
-      // Allow 60 minutes plus any increase in coding time
+   
       availableSeconds = 3600 + (totalSeconds - startingTotalSeconds);
     }
 
-    // Get used time from pixel placements
     const { data: usedTime } = await supabase
       .from("pixel_placements")
       .select("time_deducted_seconds")
@@ -98,10 +97,10 @@ export async function GET() {
       0
     ) || 0;
 
-    // Subtract used time
+
     availableSeconds = availableSeconds - totalUsedSeconds;
 
-    // Update the database with the new coding time and starting_total_seconds if needed
+
     const { error: dbError } = await supabase
       .from("coding_time")
       .upsert({
@@ -122,7 +121,7 @@ export async function GET() {
       );
     }
 
-    // Return the data with available time
+
     return NextResponse.json({
       human_readable_total: data.human_readable_total,
       total_seconds: totalSeconds,

@@ -1,3 +1,4 @@
+"use client";
 import { useState, useRef, useEffect } from "react"
 // @ts-ignore
 import { supabase } from "@/lib/supabase"
